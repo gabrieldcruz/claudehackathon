@@ -16,6 +16,8 @@ export async function POST() {
     data: {
       id: 1,
       name: "Alex",
+      heightCm: null,
+      weightKg: null,
       dailyCalories: 2000,
       dailyProtein: 150,
       dailyCarbs: 200,

@@ -1,3 +1,5 @@
+export type GoalType = "cutting" | "maintenance" | "bulking";
+
 export interface NutritionTotals {
   calories: number;
   protein: number;
@@ -10,8 +12,16 @@ export interface UserGoals {
   dailyProtein: number;
   dailyCarbs: number;
   dailyFats: number;
-  goal: string;
+  goal: GoalType;
   dietPreference: string;
+}
+
+export interface AppUserProfile extends UserGoals {
+  id: number;
+  name: string;
+  heightCm: number | null;
+  weightKg: number | null;
+  profileComplete?: boolean;
 }
 
 export interface NutritionStatus {

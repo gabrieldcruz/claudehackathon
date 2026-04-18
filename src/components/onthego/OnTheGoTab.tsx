@@ -48,7 +48,7 @@ export function OnTheGoTab() {
 
   useEffect(() => {
     fetchTodayNutrition();
-  }, []);
+  }, [fetchTodayNutrition]);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -74,11 +74,6 @@ export function OnTheGoTab() {
     setLoggedId(item.id);
     setTimeout(() => setLoggedId(null), 2000);
   };
-
-  // Flatten all items for scoring, keep restaurant reference
-  const allItems = restaurants.flatMap((r) =>
-    r.menuItems.map((item) => ({ ...item, restaurantData: r }))
-  );
 
   return (
     <div className="flex-1 overflow-y-auto pb-24">

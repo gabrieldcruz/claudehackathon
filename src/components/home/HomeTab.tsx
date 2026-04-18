@@ -23,10 +23,13 @@ export function HomeTab() {
   const [loggedId, setLoggedId] = useState<number | null>(null);
   const [mealTypeMap, setMealTypeMap] = useState<Record<number, string>>({});
 
+  const fetchPantry = () =>
+    fetch("/api/pantry").then((r) => r.json()).then(setPantry);
+
   useEffect(() => {
     fetchTodayNutrition();
     fetchPantry();
-  }, []);
+  }, [fetchTodayNutrition]);
 
   useEffect(() => {
     const q = searchQuery ? `?q=${encodeURIComponent(searchQuery)}` : "";
@@ -41,9 +44,6 @@ export function HomeTab() {
       .then((r) => r.json())
       .then(setRecipes);
   }, [searchQuery, context?.priorityMacro]);
-
-  const fetchPantry = () =>
-    fetch("/api/pantry").then((r) => r.json()).then(setPantry);
 
   const addPantryItem = async () => {
     if (!newItem.trim()) return;
