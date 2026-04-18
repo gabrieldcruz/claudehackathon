@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              Int          @id @default(autoincrement())
+  name            String       @default("User")
+  dailyCalories   Int          @default(2000)
+  dailyProtein    Int          @default(150)
+  dailyCarbs      Int          @default(200)
+  dailyFats       Int          @default(65)
+  goal            String       @default("maintenance")
+  dietPreference  String       @default("none")
+  createdAt       DateTime     @default(now())
+  mealLogs        MealLog[]
+  pantryItems     PantryItem[]
+}
+
+model Recipe {
+  id          Int          @id @default(autoincrement())
+  name        String
+  description String       @default("")
+  imageUrl    String       @default("")
+  prepTime    Int          @default(30)
+  servings    Int          @default(2)
+  calories    Float
+  protein     Float
+  carbs       Float
+  fats        Float
+  fiber       Float        @default(0)
+  tags        String       @default("")
+  ingredients Ingredient[]
+  mealLogs    MealLog[]
+  createdAt   DateTime     @default(now())
+}
+
+model Ingredient {
+  id       Int    @id @default(autoincrement())
+  recipeId Int
+  name     String
+  amount   String
+  recipe   Recipe @relation(fields: [recipeId], references: [id])
+}
+
+model Restaurant {
+  id         Int        @id @default(autoincrement())
+  name       String
+  cuisine    String     @default("")
+  imageUrl   String     @default("")
+  rating     Float      @default(4.0)
+  priceRange String     @default("$$")
+  address    String     @default("")
+  menuItems  MenuItem[]
+  createdAt  DateTime   @default(now())
+}
+
+model MenuItem {
+  id           Int        @id @default(autoincrement())
+  restaurantId Int
+  name         String
+  description  String     @default("")
+  imageUrl     String     @default("")
+  price        Float      @default(0)
+  calories     Float
+  protein      Float
+  carbs        Float
+  fats         Float
+  tags         String     @default("")
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  mealLogs     MealLog[]
+}
+
+model MealLog {
+  id         Int       @id @default(autoincrement())
+  userId     Int
+  mealType   String    @default("snack")
+  loggedAt   DateTime  @default(now())
+  calories   Float
+  protein    Float
+  carbs      Float
+  fats       Float
+  recipeId   Int?
+  menuItemId Int?
+  customName String    @default("")
+  servings   Float     @default(1)
+  user       User      @relation(fields: [userId], references: [id])
+  recipe     Recipe?   @relation(fields: [recipeId], references: [id])
+  menuItem   MenuItem? @relation(fields: [menuItemId], references: [id])
+}
+
+model PantryItem {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  name      String
+  quantity  String   @default("")
+  unit      String   @default("")
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model CustomFood {
+  id          Int      @id @default(autoincrement())
+  name        String
+  brand       String   @default("")
+  servingSize String   @default("100g")
+  calories    Float
+  protein     Float
+  carbs       Float
+  fats        Float
+  fiber       Float    @default(0)
+  barcode     String?  @unique
+  createdAt   DateTime @default(now())
+}
