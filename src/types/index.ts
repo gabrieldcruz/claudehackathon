@@ -88,5 +88,5 @@ export interface MealLogEntry {
   customName: string;
   servings: number;
   recipe?: { id: number; name: string } | null;
-  menuItem?: { id: number; name: string; restaurant: { name: string } } | null;
+  menuItem?: { id: number; name: string; price: number; restaurant: { name: string } } | null;
 }

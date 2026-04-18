@@ -6,13 +6,28 @@ import {
   Cell,
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { Trash2, Plus, Search, Flame, Beef, Wheat, Droplets, Settings } from "lucide-react";
+import {
+  Trash2,
+  Plus,
+  Search,
+  Flame,
+  Beef,
+  Wheat,
+  Droplets,
+  Settings,
+  DollarSign,
+  TrendingUp,
+  History,
+  RotateCcw,
+} from "lucide-react";
 import { useNutritionStore } from "@/store/nutritionStore";
 import { MacroRing } from "@/components/ui/MacroRing";
 import { MacroBar } from "@/components/ui/MacroBar";
@@ -40,10 +55,48 @@ interface CustomFoodForm {
   mealType: string;
 }
 
+interface SavedFood {
+  name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fats: number;
+  savedAt: number;
+}
+
+interface HistoryDay {
+  date: string;
+  label: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fats: number;
+}
+
+function loadSavedFoods(): SavedFood[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem("savedFoods") || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function persistSavedFoods(foods: SavedFood[]) {
+  if (typeof window !== "undefined") {
+    localStorage.setItem("savedFoods", JSON.stringify(foods.slice(0, 20)));
+  }
+}
+
+function loadBudget(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem("dailyBudget") || "";
+}
+
 export function NutritionTab() {
   const { status, todayLogs, fetchTodayNutrition, logMeal, removeMealLog } =
     useNutritionStore();
-  const [activeSection, setActiveSection] = useState<"dashboard" | "log" | "settings">("dashboard");
+  const [activeSection, setActiveSection] = useState<"dashboard" | "log" | "history" | "settings">("dashboard");
   const [customForm, setCustomForm] = useState<CustomFoodForm>({
     name: "",
     calories: "",
@@ -53,7 +106,16 @@ export function NutritionTab() {
     mealType: "snack",
   });
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<{ type: "recipe" | "menu"; id: number; name: string; calories: number; protein: number; carbs: number; fats: number; subtitle: string }[]>([]);
+  const [searchResults, setSearchResults] = useState<{
+    type: "recipe" | "menu";
+    id: number;
+    name: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fats: number;
+    subtitle: string;
+  }[]>([]);
   const [userSettings, setUserSettings] = useState<AppUserProfile>({
     id: 1,
     name: "Alex",
@@ -71,6 +133,17 @@ export function NutritionTab() {
   );
   const [settingsError, setSettingsError] = useState("");
 
+  // Saved foods
+  const [savedFoods, setSavedFoods] = useState<SavedFood[]>([]);
+
+  // History
+  const [weekHistory, setWeekHistory] = useState<HistoryDay[]>([]);
+  const [historyMacro, setHistoryMacro] = useState<"calories" | "protein" | "carbs" | "fats">("calories");
+
+  // Budget
+  const [dailyBudget, setDailyBudget] = useState("");
+  const [budgetInput, setBudgetInput] = useState("");
+
   useEffect(() => {
     fetchTodayNutrition();
     fetch("/api/user")
@@ -81,7 +154,19 @@ export function NutritionTab() {
           setBodyMetricsForm(getImperialBodyMetricsForm(u.heightCm, u.weightKg));
         }
       });
+    setSavedFoods(loadSavedFoods());
+    const b = loadBudget();
+    setDailyBudget(b);
+    setBudgetInput(b);
   }, [fetchTodayNutrition]);
+
+  useEffect(() => {
+    if (activeSection === "history" && weekHistory.length === 0) {
+      fetch("/api/nutrition/history")
+        .then((r) => r.json())
+        .then(setWeekHistory);
+    }
+  }, [activeSection, weekHistory.length]);
 
   const searchFood = async (q: string) => {
     if (!q.trim()) { setSearchResults([]); return; }
@@ -133,26 +218,57 @@ export function NutritionTab() {
 
   const handleCustomLog = async () => {
     if (!customForm.name || !customForm.calories) return;
-    await logMeal({
-      mealType: customForm.mealType,
+    const food: SavedFood = {
+      name: customForm.name,
       calories: Number(customForm.calories),
       protein: Number(customForm.protein || 0),
       carbs: Number(customForm.carbs || 0),
       fats: Number(customForm.fats || 0),
-      customName: customForm.name,
+      savedAt: Date.now(),
+    };
+    await logMeal({
+      mealType: customForm.mealType,
+      ...food,
+      customName: food.name,
     });
+    // Save for reuse — deduplicate by name, newest first
+    const updated = [food, ...savedFoods.filter((f) => f.name.toLowerCase() !== food.name.toLowerCase())];
+    setSavedFoods(updated);
+    persistSavedFoods(updated);
     setCustomForm({ name: "", calories: "", protein: "", carbs: "", fats: "", mealType: "snack" });
+  };
+
+  const relogSavedFood = async (food: SavedFood, mealType = "snack") => {
+    await logMeal({
+      mealType,
+      calories: food.calories,
+      protein: food.protein,
+      carbs: food.carbs,
+      fats: food.fats,
+      customName: food.name,
+    });
+  };
+
+  const removeSavedFood = (name: string) => {
+    const updated = savedFoods.filter((f) => f.name !== name);
+    setSavedFoods(updated);
+    persistSavedFoods(updated);
+  };
+
+  const saveBudget = () => {
+    setDailyBudget(budgetInput);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("dailyBudget", budgetInput);
+    }
   };
 
   const saveSettings = async () => {
     setSettingsError("");
     const parsedBodyMetrics = parseImperialBodyMetrics(bodyMetricsForm);
-
     if (!parsedBodyMetrics) {
       setSettingsError("Enter a valid height in feet/inches and weight in pounds.");
       return;
     }
-
     const res = await fetch("/api/user", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -163,17 +279,14 @@ export function NutritionTab() {
       }),
     });
     const data = await readJsonSafely(res);
-
     if (!res.ok) {
       setSettingsError(getSettingsErrorMessage(data) || "Unable to save your settings.");
       return;
     }
-
     if (!data || "error" in data) {
       setSettingsError("Unable to save your settings.");
       return;
     }
-
     const updatedUser = data as AppUserProfile;
     setUserSettings(updatedUser);
     setBodyMetricsForm(getImperialBodyMetricsForm(updatedUser.heightCm, updatedUser.weightKg));
@@ -181,13 +294,12 @@ export function NutritionTab() {
   };
 
   const parsedSettingsBodyMetrics = parseImperialBodyMetrics(bodyMetricsForm);
-  const projectedGoals =
-    parsedSettingsBodyMetrics
-      ? calculateDailyGoals({
-          heightCm: parsedSettingsBodyMetrics.heightCm,
-          weightKg: parsedSettingsBodyMetrics.weightKg,
-          goal: userSettings.goal,
-        })
+  const projectedGoals = parsedSettingsBodyMetrics
+    ? calculateDailyGoals({
+        heightCm: parsedSettingsBodyMetrics.heightCm,
+        weightKg: parsedSettingsBodyMetrics.weightKg,
+        goal: userSettings.goal,
+      })
     : null;
 
   const macroByMealType = MEAL_TYPES.map((type) => {
@@ -207,6 +319,21 @@ export function NutritionTab() {
       ].filter((d) => d.value > 0)
     : [];
 
+  // Budget calculations
+  const todaySpend = todayLogs.reduce(
+    (sum, log) => sum + (log.menuItem?.price ?? 0) * log.servings,
+    0
+  );
+  const budgetNum = parseFloat(dailyBudget) || 0;
+  const budgetPct = budgetNum > 0 ? Math.min(100, (todaySpend / budgetNum) * 100) : 0;
+  const budgetOver = budgetNum > 0 && todaySpend > budgetNum;
+
+  const SUB_TABS = [
+    { id: "dashboard", label: "Dashboard" },
+    { id: "log", label: "Log Food" },
+    { id: "history", label: "History" },
+  ] as const;
+
   return (
     <div className="flex-1 overflow-y-auto pb-24">
       {/* Header */}
@@ -223,25 +350,24 @@ export function NutritionTab() {
             <Settings className="w-5 h-5 text-gray-600" />
           </button>
         </div>
-        {/* Sub-tabs */}
         <div className="flex border-b border-gray-100">
-          {(["dashboard", "log"] as const).map((s) => (
+          {SUB_TABS.map((s) => (
             <button
-              key={s}
-              onClick={() => setActiveSection(s)}
-              className={`flex-1 py-2.5 text-sm font-medium capitalize border-b-2 transition-colors ${
-                activeSection === s
+              key={s.id}
+              onClick={() => setActiveSection(s.id)}
+              className={`flex-1 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+                activeSection === s.id
                   ? "text-indigo-600 border-indigo-600"
                   : "text-gray-500 border-transparent"
               }`}
             >
-              {s === "dashboard" ? "Dashboard" : "Log Food"}
+              {s.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* DASHBOARD */}
+      {/* ── DASHBOARD ── */}
       {activeSection === "dashboard" && status && (
         <div className="px-4 pt-4 space-y-5">
           {/* Calorie Hero */}
@@ -263,31 +389,62 @@ export function NutritionTab() {
             </div>
           </div>
 
+          {/* Budget card — only shown if budget is set OR meals logged */}
+          {(budgetNum > 0 || todaySpend > 0) && (
+            <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="w-4 h-4 text-emerald-600" />
+                  <h3 className="font-semibold text-gray-900">Food Budget</h3>
+                </div>
+                <div className="text-right">
+                  <span className={`text-lg font-bold ${budgetOver ? "text-red-500" : "text-emerald-600"}`}>
+                    ${todaySpend.toFixed(2)}
+                  </span>
+                  {budgetNum > 0 && (
+                    <span className="text-xs text-gray-400 ml-1">/ ${budgetNum.toFixed(2)}</span>
+                  )}
+                </div>
+              </div>
+              {budgetNum > 0 && (
+                <>
+                  <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden mb-1">
+                    <div
+                      className={`h-full rounded-full transition-all duration-700 ${
+                        budgetOver ? "bg-red-500" : "bg-emerald-500"
+                      }`}
+                      style={{ width: `${budgetPct}%` }}
+                    />
+                  </div>
+                  <p className={`text-xs ${budgetOver ? "text-red-400" : "text-gray-400"}`}>
+                    {budgetOver
+                      ? `$${(todaySpend - budgetNum).toFixed(2)} over budget`
+                      : `$${(budgetNum - todaySpend).toFixed(2)} remaining today`}
+                  </p>
+                </>
+              )}
+              {todaySpend > 0 && (
+                <div className="mt-2 space-y-1">
+                  {todayLogs.filter((l) => l.menuItem?.price).map((log) => (
+                    <div key={log.id} className="flex justify-between text-xs text-gray-500">
+                      <span className="truncate flex-1">{log.menuItem?.name ?? log.customName}</span>
+                      <span className="font-medium text-emerald-600 ml-2">
+                        ${((log.menuItem?.price ?? 0) * log.servings).toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Macro Rings */}
           <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
             <h3 className="font-semibold text-gray-900 mb-4">Macro Breakdown</h3>
             <div className="flex justify-around">
-              <MacroRing
-                label="Protein"
-                value={status.totals.protein}
-                max={status.goals.dailyProtein}
-                color={MACRO_COLORS.protein}
-                size={90}
-              />
-              <MacroRing
-                label="Carbs"
-                value={status.totals.carbs}
-                max={status.goals.dailyCarbs}
-                color={MACRO_COLORS.carbs}
-                size={90}
-              />
-              <MacroRing
-                label="Fats"
-                value={status.totals.fats}
-                max={status.goals.dailyFats}
-                color={MACRO_COLORS.fats}
-                size={90}
-              />
+              <MacroRing label="Protein" value={status.totals.protein} max={status.goals.dailyProtein} color={MACRO_COLORS.protein} size={90} />
+              <MacroRing label="Carbs" value={status.totals.carbs} max={status.goals.dailyCarbs} color={MACRO_COLORS.carbs} size={90} />
+              <MacroRing label="Fats" value={status.totals.fats} max={status.goals.dailyFats} color={MACRO_COLORS.fats} size={90} />
             </div>
           </div>
 
@@ -299,16 +456,14 @@ export function NutritionTab() {
             <MacroBar label="Fats" value={status.totals.fats} max={status.goals.dailyFats} color={MACRO_COLORS.fats} />
           </div>
 
-          {/* Macro Pie Chart */}
+          {/* Pie Chart */}
           {pieData.length > 0 && (
             <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
               <h3 className="font-semibold text-gray-900 mb-3">Calorie Sources</h3>
               <div className="flex items-center gap-4">
                 <PieChart width={120} height={120}>
                   <Pie data={pieData} cx={55} cy={55} innerRadius={35} outerRadius={55} dataKey="value" paddingAngle={3}>
-                    {pieData.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
+                    {pieData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
                   </Pie>
                 </PieChart>
                 <div className="space-y-2">
@@ -324,7 +479,7 @@ export function NutritionTab() {
             </div>
           )}
 
-          {/* Bar Chart by Meal Type */}
+          {/* Bar chart by meal */}
           <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
             <h3 className="font-semibold text-gray-900 mb-3">Calories by Meal</h3>
             <ResponsiveContainer width="100%" height={160}>
@@ -332,9 +487,7 @@ export function NutritionTab() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip
-                  contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }}
-                />
+                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }} />
                 <Bar dataKey="calories" fill="#6366f1" radius={[4, 4, 0, 0]} name="Calories" />
               </BarChart>
             </ResponsiveContainer>
@@ -367,10 +520,7 @@ export function NutritionTab() {
                     <p className="text-sm font-semibold text-gray-800">{Math.round(log.calories)} kcal</p>
                     <p className="text-[10px] text-gray-400">P:{Math.round(log.protein)}g C:{Math.round(log.carbs)}g F:{Math.round(log.fats)}g</p>
                   </div>
-                  <button
-                    onClick={() => removeMealLog(log.id)}
-                    className="p-1.5 text-gray-300 hover:text-red-400 transition-colors"
-                  >
+                  <button onClick={() => removeMealLog(log.id)} className="p-1.5 text-gray-300 hover:text-red-400 transition-colors">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -380,7 +530,7 @@ export function NutritionTab() {
         </div>
       )}
 
-      {/* LOG FOOD */}
+      {/* ── LOG FOOD ── */}
       {activeSection === "log" && (
         <div className="px-4 pt-4 space-y-5">
           {/* Quick stats */}
@@ -401,6 +551,42 @@ export function NutritionTab() {
             </div>
           )}
 
+          {/* Saved/Recent Foods */}
+          {savedFoods.length > 0 && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-gray-50 flex items-center gap-2">
+                <History className="w-4 h-4 text-indigo-500" />
+                <h3 className="font-semibold text-gray-900">Saved Foods</h3>
+                <span className="text-xs text-gray-400 ml-auto">{savedFoods.length} items</span>
+              </div>
+              <div className="divide-y divide-gray-50 max-h-64 overflow-y-auto">
+                {savedFoods.map((food) => (
+                  <div key={food.name} className="flex items-center gap-3 px-4 py-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{food.name}</p>
+                      <p className="text-[10px] text-gray-400">
+                        {food.calories} kcal · P:{food.protein}g · C:{food.carbs}g · F:{food.fats}g
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => relogSavedFood(food)}
+                      className="flex items-center gap-1 text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg px-2 py-1.5 hover:bg-indigo-100 transition-colors"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Log
+                    </button>
+                    <button
+                      onClick={() => removeSavedFood(food.name)}
+                      className="p-1 text-gray-300 hover:text-red-400 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Search Food */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="p-4 border-b border-gray-50">
@@ -409,10 +595,7 @@ export function NutritionTab() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    searchFood(e.target.value);
-                  }}
+                  onChange={(e) => { setSearchQuery(e.target.value); searchFood(e.target.value); }}
                   placeholder="Search recipes or restaurant items..."
                   className="w-full text-sm border border-gray-200 rounded-xl pl-9 pr-4 py-2.5 outline-none focus:border-indigo-400"
                 />
@@ -432,7 +615,10 @@ export function NutritionTab() {
                     </div>
                     <div className="text-right flex-shrink-0">
                       <p className="text-sm font-semibold text-gray-700">{item.calories} kcal</p>
-                      <p className="text-[10px] text-gray-400">P: {item.protein}g</p>
+                      <p className="text-[10px] text-gray-400">
+                        P:{item.protein}g
+                        {item.fats < 5 && <span className="ml-1 text-pink-500 font-medium">low-fat</span>}
+                      </p>
                     </div>
                     <Plus className="w-4 h-4 text-indigo-600 flex-shrink-0" />
                   </button>
@@ -444,6 +630,7 @@ export function NutritionTab() {
           {/* Custom Food Entry */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
             <h3 className="font-semibold text-gray-900 mb-3">Log Custom Food</h3>
+            <p className="text-xs text-gray-400 mb-3">Custom foods are saved for quick re-logging.</p>
             <div className="space-y-3">
               <input
                 value={customForm.name}
@@ -463,10 +650,10 @@ export function NutritionTab() {
               </select>
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  { key: "calories", label: "Calories (kcal) *", suffix: "" },
-                  { key: "protein", label: "Protein (g)", suffix: "" },
-                  { key: "carbs", label: "Carbs (g)", suffix: "" },
-                  { key: "fats", label: "Fats (g)", suffix: "" },
+                  { key: "calories", label: "Calories (kcal) *" },
+                  { key: "protein", label: "Protein (g)" },
+                  { key: "carbs", label: "Carbs (g)" },
+                  { key: "fats", label: "Fats (g)" },
                 ].map(({ key, label }) => (
                   <div key={key}>
                     <label className="text-xs text-gray-500 mb-1 block">{label}</label>
@@ -485,18 +672,147 @@ export function NutritionTab() {
                 disabled={!customForm.name || !customForm.calories}
                 className="w-full bg-indigo-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Log Food
+                Log &amp; Save Food
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* SETTINGS */}
+      {/* ── HISTORY ── */}
+      {activeSection === "history" && (
+        <div className="px-4 pt-4 space-y-5">
+          {status && (
+            <div className="bg-indigo-50 rounded-2xl p-4 border border-indigo-100">
+              <div className="flex items-center gap-2 mb-1">
+                <TrendingUp className="w-4 h-4 text-indigo-600" />
+                <h3 className="font-semibold text-indigo-900 text-sm">Daily Goal</h3>
+              </div>
+              <p className="text-xs text-indigo-600">
+                Target: <strong>{status.goals.dailyCalories} kcal</strong> · {status.goals.dailyProtein}g protein · {status.goals.dailyCarbs}g carbs · {status.goals.dailyFats}g fats
+              </p>
+            </div>
+          )}
+
+          {/* Macro selector */}
+          <div className="flex gap-2">
+            {(["calories", "protein", "carbs", "fats"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setHistoryMacro(m)}
+                className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors capitalize ${
+                  historyMacro === m
+                    ? "bg-indigo-600 text-white border-indigo-600"
+                    : "bg-white text-gray-600 border-gray-200"
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+
+          {/* 7-day line chart */}
+          <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+            <h3 className="font-semibold text-gray-900 mb-1 capitalize">
+              {historyMacro === "calories" ? "Calories" : historyMacro} — Last 7 Days
+            </h3>
+            <p className="text-xs text-gray-400 mb-3">{historyMacro === "calories" ? "kcal" : "grams"} per day</p>
+            {weekHistory.length > 0 ? (
+              <ResponsiveContainer width="100%" height={180}>
+                <LineChart data={weekHistory} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                  <XAxis dataKey="label" tick={{ fontSize: 9 }} tickFormatter={(v: string) => v.split(",")[0]} />
+                  <YAxis tick={{ fontSize: 10 }} />
+                  <Tooltip
+                    contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }}
+                    formatter={(v) =>
+                      historyMacro === "calories" ? [`${v} kcal`, "Calories"] : [`${v}g`, historyMacro]
+                    }
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey={historyMacro}
+                    stroke={historyMacro === "calories" ? "#6366f1" : historyMacro === "protein" ? "#3b82f6" : historyMacro === "carbs" ? "#f59e0b" : "#ec4899"}
+                    strokeWidth={2}
+                    dot={{ r: 4, fill: "white", strokeWidth: 2 }}
+                    activeDot={{ r: 5 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-40 flex items-center justify-center text-sm text-gray-400">Loading history…</div>
+            )}
+          </div>
+
+          {/* Daily breakdown */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-gray-50">
+              <h3 className="font-semibold text-gray-900">Daily Breakdown</h3>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {weekHistory.map((day) => (
+                <div key={day.date} className="flex items-center gap-3 px-4 py-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800">{day.label}</p>
+                    <p className="text-xs text-gray-400">P:{day.protein}g · C:{day.carbs}g · F:{day.fats}g</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-gray-800">{day.calories} kcal</p>
+                    {status && (
+                      <p className={`text-[10px] font-medium ${
+                        day.calories === 0 ? "text-gray-300" :
+                        day.calories > status.goals.dailyCalories ? "text-red-400" : "text-emerald-500"
+                      }`}>
+                        {day.calories === 0 ? "No data" :
+                          day.calories > status.goals.dailyCalories
+                            ? `+${day.calories - status.goals.dailyCalories} over`
+                            : `${status.goals.dailyCalories - day.calories} under`}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SETTINGS ── */}
       {activeSection === "settings" && (
         <div className="px-4 pt-4 space-y-5">
+          {/* Budget setting */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <DollarSign className="w-4 h-4 text-emerald-600" />
+              <h3 className="font-semibold text-gray-900">Daily Food Budget</h3>
+            </div>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={budgetInput}
+                  onChange={(e) => setBudgetInput(e.target.value)}
+                  placeholder="e.g. 25.00"
+                  className="w-full text-sm border border-gray-200 rounded-xl pl-7 pr-3 py-2.5 outline-none focus:border-indigo-400"
+                />
+              </div>
+              <button
+                onClick={saveBudget}
+                className="bg-emerald-600 text-white text-sm font-semibold rounded-xl px-4 py-2.5 hover:bg-emerald-700 transition-colors"
+              >
+                Save
+              </button>
+            </div>
+            {dailyBudget && (
+              <p className="text-xs text-gray-400 mt-2">Budget set to ${parseFloat(dailyBudget).toFixed(2)}/day</p>
+            )}
+          </div>
+
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-4">
-            <h3 className="font-semibold text-gray-900">Profile & Goals</h3>
+            <h3 className="font-semibold text-gray-900">Profile &amp; Goals</h3>
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Name</label>
               <input
@@ -509,12 +825,7 @@ export function NutritionTab() {
               <label className="text-xs text-gray-500 mb-1 block">Goal</label>
               <select
                 value={userSettings.goal}
-                onChange={(e) =>
-                  setUserSettings({
-                    ...userSettings,
-                    goal: normalizeGoal(e.target.value),
-                  })
-                }
+                onChange={(e) => setUserSettings({ ...userSettings, goal: normalizeGoal(e.target.value) })}
                 className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 bg-white outline-none focus:border-indigo-400"
               >
                 <option value="cutting">Cutting (lose fat)</option>
@@ -550,49 +861,21 @@ export function NutritionTab() {
                     max={max}
                     step={step}
                     value={bodyMetricsForm[key] ?? ""}
-                    onChange={(e) =>
-                      setBodyMetricsForm({ ...bodyMetricsForm, [key]: e.target.value })
-                    }
+                    onChange={(e) => setBodyMetricsForm({ ...bodyMetricsForm, [key]: e.target.value })}
                     className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-indigo-400"
                   />
                 </div>
               ))}
             </div>
             <div className="rounded-2xl bg-gray-50 border border-gray-100 p-4">
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-900">Auto-calculated targets</h4>
-                  <p className="text-xs text-gray-500">
-                    Your macros update from height, weight, and goal when you save.
-                  </p>
-                </div>
-              </div>
+              <h4 className="text-sm font-semibold text-gray-900 mb-1">Auto-calculated targets</h4>
+              <p className="text-xs text-gray-500 mb-3">Your macros update from height, weight, and goal when you save.</p>
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  {
-                    key: "dailyCalories",
-                    label: "Calories",
-                    value: projectedGoals?.dailyCalories ?? userSettings.dailyCalories,
-                    unit: "kcal",
-                  },
-                  {
-                    key: "dailyProtein",
-                    label: "Protein",
-                    value: projectedGoals?.dailyProtein ?? userSettings.dailyProtein,
-                    unit: "g",
-                  },
-                  {
-                    key: "dailyCarbs",
-                    label: "Carbs",
-                    value: projectedGoals?.dailyCarbs ?? userSettings.dailyCarbs,
-                    unit: "g",
-                  },
-                  {
-                    key: "dailyFats",
-                    label: "Fats",
-                    value: projectedGoals?.dailyFats ?? userSettings.dailyFats,
-                    unit: "g",
-                  },
+                  { key: "dailyCalories", label: "Calories", value: projectedGoals?.dailyCalories ?? userSettings.dailyCalories, unit: "kcal" },
+                  { key: "dailyProtein", label: "Protein", value: projectedGoals?.dailyProtein ?? userSettings.dailyProtein, unit: "g" },
+                  { key: "dailyCarbs", label: "Carbs", value: projectedGoals?.dailyCarbs ?? userSettings.dailyCarbs, unit: "g" },
+                  { key: "dailyFats", label: "Fats", value: projectedGoals?.dailyFats ?? userSettings.dailyFats, unit: "g" },
                 ].map(({ key, label, value, unit }) => (
                   <div key={key} className="rounded-xl bg-white border border-gray-100 px-3 py-3">
                     <p className="text-xs text-gray-500">{label}</p>
@@ -621,15 +904,9 @@ export function NutritionTab() {
   );
 }
 
-async function readJsonSafely(
-  response: Response
-): Promise<{ error?: string; details?: string } | AppUserProfile | null> {
+async function readJsonSafely(response: Response): Promise<{ error?: string; details?: string } | AppUserProfile | null> {
   const text = await response.text();
-
-  if (!text) {
-    return null;
-  }
-
+  if (!text) return null;
   try {
     return JSON.parse(text) as { error?: string; details?: string } | AppUserProfile;
   } catch {
@@ -637,12 +914,7 @@ async function readJsonSafely(
   }
 }
 
-function getSettingsErrorMessage(
-  data: { error?: string; details?: string } | AppUserProfile | null
-) {
-  if (!data || !("error" in data)) {
-    return "";
-  }
-
+function getSettingsErrorMessage(data: { error?: string; details?: string } | AppUserProfile | null) {
+  if (!data || !("error" in data)) return "";
   return [data.error, data.details].filter(Boolean).join(" ");
 }

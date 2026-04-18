@@ -36,6 +36,11 @@ export function MealCard({
   const tagList = tags.split(",").filter(Boolean);
   if (recommended && !tagList.includes("recommended")) tagList.unshift("recommended");
 
+  // Low fat: < 5g fats OR fats calories < 15% of total
+  const fatPct = calories > 0 ? (fats * 9) / calories : 1;
+  const isLowFat = fats < 5 || fatPct < 0.15;
+  if (isLowFat && !tagList.includes("low-fat")) tagList.push("low-fat");
+
   return (
     <div className={`bg-white rounded-2xl shadow-sm border overflow-hidden transition-all ${recommended ? "border-indigo-200 ring-1 ring-indigo-100" : "border-gray-100"}`}>
       {imageUrl && (
