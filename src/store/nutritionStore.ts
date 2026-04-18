@@ -61,7 +61,7 @@ export const useNutritionStore = create<NutritionStore>((set, get) => ({
     const res = await fetch("/api/nutrition/log", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: 1, ...data }),
+      body: JSON.stringify(data),
     });
     if (res.ok) {
       set({ lastFetched: 0 }); // invalidate cache

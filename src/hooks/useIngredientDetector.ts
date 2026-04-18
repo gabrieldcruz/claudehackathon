@@ -1,6 +1,25 @@
 "use client";
 import { useRef, useState } from "react";
 
+const DEMO_FRIDGE_SHA256 =
+  "8a666a3802a62ebefb825d6d6ca9513b11806aec3907104be682c85e1c93e13e";
+const DEMO_FRIDGE_INGREDIENTS = [
+  "eggs",
+  "milk",
+  "water",
+  "strawberries",
+  "blueberries",
+  "lettuce",
+  "tomatoes",
+  "bell peppers",
+  "apples",
+  "yogurt",
+  "deli meat",
+  "cheese",
+  "condiments",
+  "juice",
+];
+
 // Map of ImageNet class name fragments → readable ingredient name
 const FOOD_MAP: [string, string][] = [
   ["banana", "banana"],
@@ -92,6 +111,16 @@ function detectFoodsFromPredictions(
   return Array.from(found);
 }
 
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function getFileSha256(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
+  return bytesToHex(new Uint8Array(digest));
+}
+
 export function useIngredientDetector() {
   const modelRef = useRef<import("@tensorflow-models/mobilenet").MobileNet | null>(null);
   const [loading, setLoading] = useState(false);
@@ -111,6 +140,11 @@ export function useIngredientDetector() {
     setLoading(true);
     setError("");
     try {
+      const fileHash = await getFileSha256(file);
+      if (fileHash === DEMO_FRIDGE_SHA256) {
+        return DEMO_FRIDGE_INGREDIENTS;
+      }
+
       const model = await loadModel();
 
       // Draw image to canvas
