@@ -16,6 +16,12 @@ import { Trash2, Plus, Search, Flame, Beef, Wheat, Droplets, Settings } from "lu
 import { useNutritionStore } from "@/store/nutritionStore";
 import { MacroRing } from "@/components/ui/MacroRing";
 import { MacroBar } from "@/components/ui/MacroBar";
+import { calculateDailyGoals, normalizeGoal } from "@/lib/user-goals";
+import type { AppUserProfile } from "@/types";
+import {
+  getImperialBodyMetricsForm,
+  parseImperialBodyMetrics,
+} from "@/lib/body-metrics";
 
 const MACRO_COLORS = {
   protein: "#3b82f6",
@@ -48,8 +54,11 @@ export function NutritionTab() {
   });
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<{ type: "recipe" | "menu"; id: number; name: string; calories: number; protein: number; carbs: number; fats: number; subtitle: string }[]>([]);
-  const [userSettings, setUserSettings] = useState({
+  const [userSettings, setUserSettings] = useState<AppUserProfile>({
+    id: 1,
     name: "Alex",
+    heightCm: 170,
+    weightKg: 70,
     dailyCalories: 2000,
     dailyProtein: 150,
     dailyCarbs: 200,
@@ -57,15 +66,22 @@ export function NutritionTab() {
     goal: "maintenance",
     dietPreference: "none",
   });
+  const [bodyMetricsForm, setBodyMetricsForm] = useState(() =>
+    getImperialBodyMetricsForm(170, 70)
+  );
+  const [settingsError, setSettingsError] = useState("");
 
   useEffect(() => {
     fetchTodayNutrition();
     fetch("/api/user")
       .then((r) => r.json())
       .then((u) => {
-        if (u) setUserSettings(u);
+        if (u) {
+          setUserSettings(u);
+          setBodyMetricsForm(getImperialBodyMetricsForm(u.heightCm, u.weightKg));
+        }
       });
-  }, []);
+  }, [fetchTodayNutrition]);
 
   const searchFood = async (q: string) => {
     if (!q.trim()) { setSearchResults([]); return; }
@@ -129,13 +145,50 @@ export function NutritionTab() {
   };
 
   const saveSettings = async () => {
-    await fetch("/api/user", {
+    setSettingsError("");
+    const parsedBodyMetrics = parseImperialBodyMetrics(bodyMetricsForm);
+
+    if (!parsedBodyMetrics) {
+      setSettingsError("Enter a valid height in feet/inches and weight in pounds.");
+      return;
+    }
+
+    const res = await fetch("/api/user", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(userSettings),
+      body: JSON.stringify({
+        ...userSettings,
+        heightCm: parsedBodyMetrics.heightCm,
+        weightKg: parsedBodyMetrics.weightKg,
+      }),
     });
-    fetchTodayNutrition();
+    const data = await readJsonSafely(res);
+
+    if (!res.ok) {
+      setSettingsError(getSettingsErrorMessage(data) || "Unable to save your settings.");
+      return;
+    }
+
+    if (!data || "error" in data) {
+      setSettingsError("Unable to save your settings.");
+      return;
+    }
+
+    const updatedUser = data as AppUserProfile;
+    setUserSettings(updatedUser);
+    setBodyMetricsForm(getImperialBodyMetricsForm(updatedUser.heightCm, updatedUser.weightKg));
+    await fetchTodayNutrition(true);
   };
+
+  const parsedSettingsBodyMetrics = parseImperialBodyMetrics(bodyMetricsForm);
+  const projectedGoals =
+    parsedSettingsBodyMetrics
+      ? calculateDailyGoals({
+          heightCm: parsedSettingsBodyMetrics.heightCm,
+          weightKg: parsedSettingsBodyMetrics.weightKg,
+          goal: userSettings.goal,
+        })
+    : null;
 
   const macroByMealType = MEAL_TYPES.map((type) => {
     const entries = todayLogs.filter((l) => l.mealType === type);
@@ -456,7 +509,12 @@ export function NutritionTab() {
               <label className="text-xs text-gray-500 mb-1 block">Goal</label>
               <select
                 value={userSettings.goal}
-                onChange={(e) => setUserSettings({ ...userSettings, goal: e.target.value })}
+                onChange={(e) =>
+                  setUserSettings({
+                    ...userSettings,
+                    goal: normalizeGoal(e.target.value),
+                  })
+                }
                 className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 bg-white outline-none focus:border-indigo-400"
               >
                 <option value="cutting">Cutting (lose fat)</option>
@@ -478,27 +536,78 @@ export function NutritionTab() {
                 <option value="halal">Halal</option>
               </select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               {[
-                { key: "dailyCalories", label: "Daily Calories", unit: "kcal" },
-                { key: "dailyProtein", label: "Daily Protein", unit: "g" },
-                { key: "dailyCarbs", label: "Daily Carbs", unit: "g" },
-                { key: "dailyFats", label: "Daily Fats", unit: "g" },
-              ].map(({ key, label, unit }) => (
+                { key: "heightFeet" as const, label: "Height", unit: "ft", min: "3", max: "7", step: "1" },
+                { key: "heightInches" as const, label: "Height", unit: "in", min: "0", max: "11.9", step: "0.1" },
+                { key: "weightLbs" as const, label: "Weight", unit: "lbs", min: "77", max: "573.2", step: "0.1" },
+              ].map(({ key, label, unit, min, max, step }) => (
                 <div key={key}>
                   <label className="text-xs text-gray-500 mb-1 block">{label} ({unit})</label>
                   <input
                     type="number"
-                    min="0"
-                    value={userSettings[key as keyof typeof userSettings]}
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={bodyMetricsForm[key] ?? ""}
                     onChange={(e) =>
-                      setUserSettings({ ...userSettings, [key]: Number(e.target.value) })
+                      setBodyMetricsForm({ ...bodyMetricsForm, [key]: e.target.value })
                     }
                     className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-indigo-400"
                   />
                 </div>
               ))}
             </div>
+            <div className="rounded-2xl bg-gray-50 border border-gray-100 p-4">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900">Auto-calculated targets</h4>
+                  <p className="text-xs text-gray-500">
+                    Your macros update from height, weight, and goal when you save.
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  {
+                    key: "dailyCalories",
+                    label: "Calories",
+                    value: projectedGoals?.dailyCalories ?? userSettings.dailyCalories,
+                    unit: "kcal",
+                  },
+                  {
+                    key: "dailyProtein",
+                    label: "Protein",
+                    value: projectedGoals?.dailyProtein ?? userSettings.dailyProtein,
+                    unit: "g",
+                  },
+                  {
+                    key: "dailyCarbs",
+                    label: "Carbs",
+                    value: projectedGoals?.dailyCarbs ?? userSettings.dailyCarbs,
+                    unit: "g",
+                  },
+                  {
+                    key: "dailyFats",
+                    label: "Fats",
+                    value: projectedGoals?.dailyFats ?? userSettings.dailyFats,
+                    unit: "g",
+                  },
+                ].map(({ key, label, value, unit }) => (
+                  <div key={key} className="rounded-xl bg-white border border-gray-100 px-3 py-3">
+                    <p className="text-xs text-gray-500">{label}</p>
+                    <p className="mt-1 text-lg font-semibold text-gray-900">
+                      {value} <span className="text-xs font-medium text-gray-400">{unit}</span>
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {settingsError && (
+              <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600">
+                {settingsError}
+              </p>
+            )}
             <button
               onClick={saveSettings}
               className="w-full bg-indigo-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-indigo-700 transition-colors"
@@ -510,4 +619,30 @@ export function NutritionTab() {
       )}
     </div>
   );
+}
+
+async function readJsonSafely(
+  response: Response
+): Promise<{ error?: string; details?: string } | AppUserProfile | null> {
+  const text = await response.text();
+
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text) as { error?: string; details?: string } | AppUserProfile;
+  } catch {
+    return null;
+  }
+}
+
+function getSettingsErrorMessage(
+  data: { error?: string; details?: string } | AppUserProfile | null
+) {
+  if (!data || !("error" in data)) {
+    return "";
+  }
+
+  return [data.error, data.details].filter(Boolean).join(" ");
 }

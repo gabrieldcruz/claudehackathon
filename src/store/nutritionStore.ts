@@ -9,7 +9,7 @@ interface NutritionStore {
   todayLogs: MealLogEntry[];
   isLoading: boolean;
   lastFetched: number;
-  fetchTodayNutrition: () => Promise<void>;
+  fetchTodayNutrition: (force?: boolean) => Promise<void>;
   logMeal: (data: {
     mealType: string;
     calories: number;
@@ -31,9 +31,9 @@ export const useNutritionStore = create<NutritionStore>((set, get) => ({
   isLoading: false,
   lastFetched: 0,
 
-  fetchTodayNutrition: async () => {
+  fetchTodayNutrition: async (force = false) => {
     const now = Date.now();
-    if (now - get().lastFetched < 10000 && get().status) return; // 10s cache
+    if (!force && now - get().lastFetched < 10000 && get().status) return; // 10s cache
 
     set({ isLoading: true });
     try {

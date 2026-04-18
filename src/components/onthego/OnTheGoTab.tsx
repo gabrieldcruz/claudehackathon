@@ -61,7 +61,7 @@ export function OnTheGoTab() {
 
   useEffect(() => {
     fetchTodayNutrition();
-  }, []);
+  }, [fetchTodayNutrition]);
 
   useEffect(() => {
     const params = new URLSearchParams();
