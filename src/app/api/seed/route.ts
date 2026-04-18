@@ -250,6 +250,8 @@ export async function POST() {
       rating: 4.2,
       priceRange: "$$",
       address: "123 Main St",
+      lat: 40.7128,
+      lng: -74.006,
       menuItems: [
         {
           name: "Chicken Burrito Bowl",
@@ -290,6 +292,8 @@ export async function POST() {
       rating: 4.5,
       priceRange: "$$",
       address: "456 Park Ave",
+      lat: 40.7549,
+      lng: -73.984,
       menuItems: [
         {
           name: "Harvest Bowl",
@@ -330,6 +334,8 @@ export async function POST() {
       rating: 4.3,
       priceRange: "$$",
       address: "789 Broadway",
+      lat: 40.7127,
+      lng: -73.9981,
       menuItems: [
         {
           name: "ShackBurger",
@@ -370,6 +376,8 @@ export async function POST() {
       rating: 4.6,
       priceRange: "$$",
       address: "321 Elm St",
+      lat: 40.7282,
+      lng: -73.7949,
       menuItems: [
         {
           name: "Grilled Chicken Pita",
@@ -410,6 +418,8 @@ export async function POST() {
       rating: 4.0,
       priceRange: "$",
       address: "654 Oak Blvd",
+      lat: 40.6892,
+      lng: -73.9442,
       menuItems: [
         {
           name: "Turkey Avocado BLT",

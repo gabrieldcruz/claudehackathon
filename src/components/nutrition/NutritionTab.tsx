@@ -134,15 +134,15 @@ export function NutritionTab() {
   const [settingsError, setSettingsError] = useState("");
 
   // Saved foods
-  const [savedFoods, setSavedFoods] = useState<SavedFood[]>([]);
+  const [savedFoods, setSavedFoods] = useState<SavedFood[]>(loadSavedFoods);
 
   // History
   const [weekHistory, setWeekHistory] = useState<HistoryDay[]>([]);
   const [historyMacro, setHistoryMacro] = useState<"calories" | "protein" | "carbs" | "fats">("calories");
 
   // Budget
-  const [dailyBudget, setDailyBudget] = useState("");
-  const [budgetInput, setBudgetInput] = useState("");
+  const [dailyBudget, setDailyBudget] = useState(loadBudget);
+  const [budgetInput, setBudgetInput] = useState(loadBudget);
 
   useEffect(() => {
     fetchTodayNutrition();
@@ -154,10 +154,6 @@ export function NutritionTab() {
           setBodyMetricsForm(getImperialBodyMetricsForm(u.heightCm, u.weightKg));
         }
       });
-    setSavedFoods(loadSavedFoods());
-    const b = loadBudget();
-    setDailyBudget(b);
-    setBudgetInput(b);
   }, [fetchTodayNutrition]);
 
   useEffect(() => {
@@ -527,6 +523,37 @@ export function NutritionTab() {
               ))}
             </div>
           </div>
+
+          {/* Budget Tracker */}
+          {(() => {
+            const restaurantLogs = todayLogs.filter((l) => l.menuItem?.price);
+            const todaySpend = restaurantLogs.reduce(
+              (sum, l) => sum + (l.menuItem?.price ?? 0) * l.servings,
+              0
+            );
+            if (restaurantLogs.length === 0) return null;
+            return (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-emerald-600" />
+                    <h3 className="font-semibold text-gray-900">Today&apos;s Spend</h3>
+                  </div>
+                  <span className="text-lg font-bold text-emerald-600">${todaySpend.toFixed(2)}</span>
+                </div>
+                <div className="space-y-1.5">
+                  {restaurantLogs.map((log) => (
+                    <div key={log.id} className="flex justify-between text-xs text-gray-600">
+                      <span className="truncate flex-1">{log.menuItem?.name ?? log.customName}</span>
+                      <span className="font-medium ml-2 text-emerald-600">
+                        ${((log.menuItem?.price ?? 0) * log.servings).toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -680,8 +707,10 @@ export function NutritionTab() {
       )}
 
       {/* ── HISTORY ── */}
+      {/* HISTORY */}
       {activeSection === "history" && (
         <div className="px-4 pt-4 space-y-5">
+          {/* Weekly calorie goal line */}
           {status && (
             <div className="bg-indigo-50 rounded-2xl p-4 border border-indigo-100">
               <div className="flex items-center gap-2 mb-1">
@@ -690,6 +719,9 @@ export function NutritionTab() {
               </div>
               <p className="text-xs text-indigo-600">
                 Target: <strong>{status.goals.dailyCalories} kcal</strong> · {status.goals.dailyProtein}g protein · {status.goals.dailyCarbs}g carbs · {status.goals.dailyFats}g fats
+                Target: <strong>{status.goals.dailyCalories} kcal</strong> ·{" "}
+                {status.goals.dailyProtein}g protein · {status.goals.dailyCarbs}g carbs ·{" "}
+                {status.goals.dailyFats}g fats
               </p>
             </div>
           )}
@@ -711,17 +743,23 @@ export function NutritionTab() {
             ))}
           </div>
 
-          {/* 7-day line chart */}
+          {/* Weekly Line Chart */}
           <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
             <h3 className="font-semibold text-gray-900 mb-1 capitalize">
-              {historyMacro === "calories" ? "Calories" : historyMacro} — Last 7 Days
+              {historyMacro === "calories" ? "Calories" : historyMacro.charAt(0).toUpperCase() + historyMacro.slice(1)} — Last 7 Days
             </h3>
-            <p className="text-xs text-gray-400 mb-3">{historyMacro === "calories" ? "kcal" : "grams"} per day</p>
+            <p className="text-xs text-gray-400 mb-3">
+              {historyMacro === "calories" ? "kcal" : "grams"} per day
+            </p>
             {weekHistory.length > 0 ? (
               <ResponsiveContainer width="100%" height={180}>
                 <LineChart data={weekHistory} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                  <XAxis dataKey="label" tick={{ fontSize: 9 }} tickFormatter={(v: string) => v.split(",")[0]} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 9 }}
+                    tickFormatter={(v: string) => v.split(",")[0]}
+                  />
                   <YAxis tick={{ fontSize: 10 }} />
                   <Tooltip
                     contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }}
@@ -732,19 +770,30 @@ export function NutritionTab() {
                   <Line
                     type="monotone"
                     dataKey={historyMacro}
-                    stroke={historyMacro === "calories" ? "#6366f1" : historyMacro === "protein" ? "#3b82f6" : historyMacro === "carbs" ? "#f59e0b" : "#ec4899"}
+                    stroke={
+                      historyMacro === "calories"
+                        ? "#6366f1"
+                        : historyMacro === "protein"
+                        ? "#3b82f6"
+                        : historyMacro === "carbs"
+                        ? "#f59e0b"
+                        : "#ec4899"
+                    }
                     strokeWidth={2}
                     dot={{ r: 4, fill: "white", strokeWidth: 2 }}
                     activeDot={{ r: 5 }}
                   />
+                  {/* Goal reference line rendered as a regular line on duplicate data */}
                 </LineChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-40 flex items-center justify-center text-sm text-gray-400">Loading history…</div>
+              <div className="h-40 flex items-center justify-center text-sm text-gray-400">
+                Loading history...
+              </div>
             )}
           </div>
 
-          {/* Daily breakdown */}
+          {/* Daily breakdown table */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="p-4 border-b border-gray-50">
               <h3 className="font-semibold text-gray-900">Daily Breakdown</h3>
@@ -754,19 +803,27 @@ export function NutritionTab() {
                 <div key={day.date} className="flex items-center gap-3 px-4 py-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-800">{day.label}</p>
-                    <p className="text-xs text-gray-400">P:{day.protein}g · C:{day.carbs}g · F:{day.fats}g</p>
+                    <p className="text-xs text-gray-400">
+                      P:{day.protein}g · C:{day.carbs}g · F:{day.fats}g
+                    </p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold text-gray-800">{day.calories} kcal</p>
                     {status && (
-                      <p className={`text-[10px] font-medium ${
-                        day.calories === 0 ? "text-gray-300" :
-                        day.calories > status.goals.dailyCalories ? "text-red-400" : "text-emerald-500"
-                      }`}>
-                        {day.calories === 0 ? "No data" :
-                          day.calories > status.goals.dailyCalories
-                            ? `+${day.calories - status.goals.dailyCalories} over`
-                            : `${status.goals.dailyCalories - day.calories} under`}
+                      <p
+                        className={`text-[10px] font-medium ${
+                          day.calories === 0
+                            ? "text-gray-300"
+                            : day.calories > status.goals.dailyCalories
+                            ? "text-red-400"
+                            : "text-emerald-500"
+                        }`}
+                      >
+                        {day.calories === 0
+                          ? "No data"
+                          : day.calories > status.goals.dailyCalories
+                          ? `+${day.calories - status.goals.dailyCalories} over`
+                          : `${status.goals.dailyCalories - day.calories} under`}
                       </p>
                     )}
                   </div>
@@ -777,7 +834,7 @@ export function NutritionTab() {
         </div>
       )}
 
-      {/* ── SETTINGS ── */}
+      {/* SETTINGS */}
       {activeSection === "settings" && (
         <div className="px-4 pt-4 space-y-5">
           {/* Budget setting */}

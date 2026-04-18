@@ -1,6 +1,14 @@
 "use client";
+
 import { useEffect, useState } from "react";
-import { Loader2, LocateFixed, Search, MapPin, Star, DollarSign } from "lucide-react";
+import {
+  Loader2,
+  LocateFixed,
+  Search,
+  MapPin,
+  Star,
+  DollarSign,
+} from "lucide-react";
 import { useNutritionStore } from "@/store/nutritionStore";
 import { IntelligenceBanner } from "@/components/ui/IntelligenceBanner";
 import { MealCard } from "@/components/ui/MealCard";
@@ -28,6 +36,8 @@ interface RestaurantData {
   rating: number;
   priceRange: string;
   address: string;
+  lat?: number | null;
+  lng?: number | null;
   distanceMeters?: number;
   source?: "local" | "google";
   hasNutrition?: boolean;
@@ -40,7 +50,8 @@ interface UserLocation {
 }
 
 export function OnTheGoTab() {
-  const { status, context, fetchTodayNutrition, logMeal } = useNutritionStore();
+  const { status, context, todayLogs, fetchTodayNutrition, logMeal } =
+    useNutritionStore();
   const [restaurants, setRestaurants] = useState<RestaurantData[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loggedId, setLoggedId] = useState<number | null>(null);
@@ -50,6 +61,7 @@ export function OnTheGoTab() {
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [locationError, setLocationError] = useState("");
   const [restaurantError, setRestaurantError] = useState("");
+  const [userDietPreference, setUserDietPreference] = useState("none");
 
   const filters = [
     { label: "All", value: "all" },
@@ -57,10 +69,19 @@ export function OnTheGoTab() {
     { label: "Low Carb", value: "low-carb" },
     { label: "Low Cal", value: "low-calorie" },
     { label: "Vegan", value: "vegan" },
+    { label: "Halal", value: "halal" },
   ];
 
   useEffect(() => {
     fetchTodayNutrition();
+    fetch("/api/user")
+      .then((r) => r.json())
+      .then((u) => {
+        if (u?.dietPreference && u.dietPreference !== "none") {
+          setUserDietPreference(u.dietPreference);
+          setActiveFilter(u.dietPreference);
+        }
+      });
   }, [fetchTodayNutrition]);
 
   useEffect(() => {
@@ -72,14 +93,14 @@ export function OnTheGoTab() {
       params.set("lng", String(userLocation.lng));
     }
 
-    const qs = params.toString() ? `?${params.toString()}` : "";
     const endpoint = userLocation ? "/api/restaurants/nearby" : "/api/restaurants";
+    const qs = params.toString() ? `?${params.toString()}` : "";
 
     fetch(`${endpoint}${qs}`)
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Restaurants unavailable");
-        return data;
+        return data as RestaurantData[];
       })
       .then((data) => {
         setRestaurantError("");
@@ -144,45 +165,61 @@ export function OnTheGoTab() {
     setTimeout(() => setLoggedId(null), 2000);
   };
 
+  const todaySpend = todayLogs.reduce((sum, log) => {
+    if (log.menuItem?.price) return sum + log.menuItem.price * log.servings;
+    return sum;
+  }, 0);
+
   return (
     <div className="flex-1 overflow-y-auto pb-24">
-      {/* Header */}
       <div className="bg-white px-4 pt-12 pb-4 sticky top-0 z-10 shadow-sm">
         <h1 className="text-2xl font-bold text-gray-900 mb-1">On the Go</h1>
         <p className="text-sm text-gray-500">Eat smart at restaurants nearby</p>
       </div>
 
       <div className="px-4 pt-4 space-y-5">
-        {/* Intelligence Banner */}
         {context && <IntelligenceBanner context={context} />}
 
-        {/* Calorie Summary */}
         {status && (
           <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-            <div className="flex justify-between text-sm mb-2">
+            <div className="flex justify-between text-sm mb-3">
               <span className="font-semibold text-gray-700">Remaining Budget</span>
               <span className="text-indigo-600 font-bold">
                 {Math.round(status.remaining.calories)} kcal
               </span>
             </div>
-            <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="grid grid-cols-3 gap-2 text-center mb-3">
               <div className="bg-blue-50 rounded-xl p-2">
-                <p className="text-xs font-bold text-blue-600">{Math.round(status.remaining.protein)}g</p>
+                <p className="text-xs font-bold text-blue-600">
+                  {Math.round(status.remaining.protein)}g
+                </p>
                 <p className="text-[10px] text-gray-500">Protein left</p>
               </div>
               <div className="bg-amber-50 rounded-xl p-2">
-                <p className="text-xs font-bold text-amber-600">{Math.round(status.remaining.carbs)}g</p>
+                <p className="text-xs font-bold text-amber-600">
+                  {Math.round(status.remaining.carbs)}g
+                </p>
                 <p className="text-[10px] text-gray-500">Carbs left</p>
               </div>
               <div className="bg-pink-50 rounded-xl p-2">
-                <p className="text-xs font-bold text-pink-600">{Math.round(status.remaining.fats)}g</p>
+                <p className="text-xs font-bold text-pink-600">
+                  {Math.round(status.remaining.fats)}g
+                </p>
                 <p className="text-[10px] text-gray-500">Fats left</p>
               </div>
+            </div>
+            <div className="flex items-center justify-between pt-3 border-t border-gray-50">
+              <span className="text-xs text-gray-500 flex items-center gap-1">
+                <DollarSign className="w-3 h-3 text-emerald-500" />
+                Today&apos;s restaurant spend
+              </span>
+              <span className="text-sm font-bold text-emerald-600">
+                ${todaySpend.toFixed(2)}
+              </span>
             </div>
           </div>
         )}
 
-        {/* Search */}
         <div className="space-y-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -229,7 +266,6 @@ export function OnTheGoTab() {
           )}
         </div>
 
-        {/* Filter Chips */}
         <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-hide">
           {filters.map((f) => (
             <button
@@ -246,7 +282,12 @@ export function OnTheGoTab() {
           ))}
         </div>
 
-        {/* Restaurant Sections */}
+        {userDietPreference !== "none" && (
+          <p className="text-xs text-indigo-500 -mt-2">
+            Filtered for your <strong>{userDietPreference}</strong> preference
+          </p>
+        )}
+
         {restaurants.map((restaurant) => {
           const scored = context
             ? [...restaurant.menuItems].sort(
@@ -256,18 +297,21 @@ export function OnTheGoTab() {
 
           return (
             <div key={restaurant.id} className="space-y-3">
-              {/* Restaurant Header */}
               <div className="flex items-center gap-3">
                 {restaurant.imageUrl && (
                   <img
                     src={restaurant.imageUrl}
                     alt={restaurant.name}
                     className="w-12 h-12 rounded-xl object-cover"
-                    onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
                   />
                 )}
                 <div className="flex-1 min-w-0">
-                  <h2 className="font-semibold text-gray-900 text-base">{restaurant.name}</h2>
+                  <h2 className="font-semibold text-gray-900 text-base">
+                    {restaurant.name}
+                  </h2>
                   <div className="flex items-center gap-2 text-xs text-gray-500">
                     <span className="flex items-center gap-0.5">
                       <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
@@ -276,9 +320,7 @@ export function OnTheGoTab() {
                     <span>·</span>
                     <span>{restaurant.cuisine}</span>
                     <span>·</span>
-                    <span className="flex items-center">
-                      {restaurant.priceRange}
-                    </span>
+                    <span>{restaurant.priceRange}</span>
                   </div>
                   <div className="flex items-center gap-1 text-xs text-gray-400 mt-0.5">
                     <MapPin className="w-3 h-3" />

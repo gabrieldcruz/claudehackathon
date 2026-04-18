@@ -57,6 +57,8 @@ model Restaurant {
   rating     Float      @default(4.0)
   priceRange String     @default("$$")
   address    String     @default("")
+  lat        Float?
+  lng        Float?
   menuItems  MenuItem[]
   createdAt  DateTime   @default(now())
 }
