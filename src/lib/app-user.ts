@@ -17,7 +17,34 @@ export interface AppUserRecord {
   createdAt: Date;
 }
 
+interface TableColumn {
+  name: string;
+}
+
+let ensuredBodyMetricColumns = false;
+
+export async function ensureUserBodyMetricColumns() {
+  if (ensuredBodyMetricColumns) return;
+
+  const columns = await prisma.$queryRaw<TableColumn[]>`
+    PRAGMA table_info("User")
+  `;
+  const columnNames = new Set(columns.map((column) => column.name));
+
+  if (!columnNames.has("heightCm")) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN "heightCm" REAL`);
+  }
+
+  if (!columnNames.has("weightKg")) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN "weightKg" REAL`);
+  }
+
+  ensuredBodyMetricColumns = true;
+}
+
 export async function getOrCreateAppUser() {
+  await ensureUserBodyMetricColumns();
+
   const existingUser = await getAppUserById(APP_USER_ID);
 
   if (existingUser) {
@@ -44,6 +71,8 @@ export function isUserProfileComplete(
 }
 
 export async function getAppUserById(id: number) {
+  await ensureUserBodyMetricColumns();
+
   const rows = await prisma.$queryRaw<AppUserRecord[]>`
     SELECT
       "id",
