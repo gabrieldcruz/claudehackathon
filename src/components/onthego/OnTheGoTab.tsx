@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Search, MapPin, Star, DollarSign } from "lucide-react";
+import { Loader2, LocateFixed, Search, MapPin, Star, DollarSign } from "lucide-react";
 import { useNutritionStore } from "@/store/nutritionStore";
 import { IntelligenceBanner } from "@/components/ui/IntelligenceBanner";
 import { MealCard } from "@/components/ui/MealCard";
@@ -20,14 +20,23 @@ interface MenuItemData {
 }
 
 interface RestaurantData {
-  id: number;
+  id: number | string;
+  placeId?: string;
   name: string;
   cuisine: string;
   imageUrl: string;
   rating: number;
   priceRange: string;
   address: string;
+  distanceMeters?: number;
+  source?: "local" | "google";
+  hasNutrition?: boolean;
   menuItems: MenuItemData[];
+}
+
+interface UserLocation {
+  lat: number;
+  lng: number;
 }
 
 export function OnTheGoTab() {
@@ -37,6 +46,10 @@ export function OnTheGoTab() {
   const [loggedId, setLoggedId] = useState<number | null>(null);
   const [mealTypeMap, setMealTypeMap] = useState<Record<number, string>>({});
   const [activeFilter, setActiveFilter] = useState("all");
+  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
+  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
+  const [locationError, setLocationError] = useState("");
+  const [restaurantError, setRestaurantError] = useState("");
 
   const filters = [
     { label: "All", value: "all" },
@@ -54,11 +67,67 @@ export function OnTheGoTab() {
     const params = new URLSearchParams();
     if (searchQuery) params.set("q", searchQuery);
     if (activeFilter !== "all") params.set("tag", activeFilter);
+    if (userLocation) {
+      params.set("lat", String(userLocation.lat));
+      params.set("lng", String(userLocation.lng));
+    }
+
     const qs = params.toString() ? `?${params.toString()}` : "";
-    fetch(`/api/restaurants${qs}`)
-      .then((r) => r.json())
-      .then(setRestaurants);
-  }, [searchQuery, activeFilter]);
+    const endpoint = userLocation ? "/api/restaurants/nearby" : "/api/restaurants";
+
+    fetch(`${endpoint}${qs}`)
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Restaurants unavailable");
+        return data;
+      })
+      .then((data) => {
+        setRestaurantError("");
+        setRestaurants(data);
+      })
+      .catch((error: Error) => {
+        setRestaurantError(error.message);
+        setRestaurants([]);
+      });
+  }, [searchQuery, activeFilter, userLocation]);
+
+  const handleUseLocation = () => {
+    setLocationError("");
+    setRestaurantError("");
+
+    if (!navigator.geolocation) {
+      setLocationError("Location is not available in this browser.");
+      return;
+    }
+
+    setIsLoadingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+        setIsLoadingLocation(false);
+      },
+      () => {
+        setLocationError("Location permission was denied or unavailable.");
+        setIsLoadingLocation(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
+    );
+  };
+
+  const handleClearLocation = () => {
+    setUserLocation(null);
+    setLocationError("");
+    setRestaurantError("");
+  };
+
+  const formatDistance = (meters?: number) => {
+    if (meters === undefined || !Number.isFinite(meters)) return "";
+    const miles = meters / 1609.344;
+    return miles < 0.1 ? "Nearby" : `${miles.toFixed(1)} mi`;
+  };
 
   const handleLog = async (item: MenuItemData, restaurantName: string) => {
     const mealType = mealTypeMap[item.id] ?? "lunch";
@@ -74,11 +143,6 @@ export function OnTheGoTab() {
     setLoggedId(item.id);
     setTimeout(() => setLoggedId(null), 2000);
   };
-
-  // Flatten all items for scoring, keep restaurant reference
-  const allItems = restaurants.flatMap((r) =>
-    r.menuItems.map((item) => ({ ...item, restaurantData: r }))
-  );
 
   return (
     <div className="flex-1 overflow-y-auto pb-24">
@@ -119,14 +183,50 @@ export function OnTheGoTab() {
         )}
 
         {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search restaurants..."
-            className="w-full text-sm border border-gray-200 rounded-xl pl-9 pr-4 py-3 outline-none focus:border-indigo-400 bg-white"
-          />
+        <div className="space-y-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search restaurants..."
+              className="w-full text-sm border border-gray-200 rounded-xl pl-9 pr-4 py-3 outline-none focus:border-indigo-400 bg-white"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleUseLocation}
+              disabled={isLoadingLocation}
+              className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
+            >
+              {isLoadingLocation ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <LocateFixed className="h-3.5 w-3.5" />
+              )}
+              {userLocation ? "Refresh nearby" : "Use my location"}
+            </button>
+            {userLocation && (
+              <button
+                onClick={handleClearLocation}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600"
+              >
+                Show saved picks
+              </button>
+            )}
+          </div>
+
+          {userLocation && (
+            <p className="text-xs font-medium text-emerald-700">
+              Nearby saved-menu matches appear first when nutrition is available.
+            </p>
+          )}
+          {(locationError || restaurantError) && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+              {locationError || restaurantError}
+            </p>
+          )}
         </div>
 
         {/* Filter Chips */}
@@ -183,9 +283,21 @@ export function OnTheGoTab() {
                   <div className="flex items-center gap-1 text-xs text-gray-400 mt-0.5">
                     <MapPin className="w-3 h-3" />
                     <span>{restaurant.address}</span>
+                    {restaurant.distanceMeters !== undefined && (
+                      <>
+                        <span>·</span>
+                        <span>{formatDistance(restaurant.distanceMeters)}</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
+
+              {restaurant.source === "google" && restaurant.menuItems.length > 0 && (
+                <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
+                  Recommended items matched from saved nutrition data.
+                </p>
+              )}
 
               {scored.map((item, idx) => (
                 <div key={item.id}>
@@ -228,6 +340,26 @@ export function OnTheGoTab() {
                   )}
                 </div>
               ))}
+
+              {restaurant.source === "google" && restaurant.menuItems.length === 0 && (
+                <div className="rounded-lg border border-gray-100 bg-white p-3 text-sm text-gray-600">
+                  <p className="font-medium text-gray-800">Nearby pick</p>
+                  <p className="mt-1 text-xs">
+                    Check the menu before logging a meal. Google Places does not return nutrition
+                    details.
+                  </p>
+                  {restaurant.placeId && (
+                    <a
+                      href={`https://www.google.com/maps/place/?q=place_id:${restaurant.placeId}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-flex rounded-lg bg-gray-900 px-3 py-2 text-xs font-semibold text-white"
+                    >
+                      Open in Google Maps
+                    </a>
+                  )}
+                </div>
+              )}
 
               <div className="border-b border-gray-100 pt-2" />
             </div>

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Search, Plus, ShoppingBag, ChevronRight, Trash2 } from "lucide-react";
 import { useNutritionStore } from "@/store/nutritionStore";
 import { IntelligenceBanner } from "@/components/ui/IntelligenceBanner";
@@ -23,10 +23,15 @@ export function HomeTab() {
   const [loggedId, setLoggedId] = useState<number | null>(null);
   const [mealTypeMap, setMealTypeMap] = useState<Record<number, string>>({});
 
+  const fetchPantry = useCallback(
+    () => fetch("/api/pantry").then((r) => r.json()).then(setPantry),
+    []
+  );
+
   useEffect(() => {
     fetchTodayNutrition();
     fetchPantry();
-  }, []);
+  }, [fetchTodayNutrition, fetchPantry]);
 
   useEffect(() => {
     const q = searchQuery ? `?q=${encodeURIComponent(searchQuery)}` : "";
@@ -41,9 +46,6 @@ export function HomeTab() {
       .then((r) => r.json())
       .then(setRecipes);
   }, [searchQuery, context?.priorityMacro]);
-
-  const fetchPantry = () =>
-    fetch("/api/pantry").then((r) => r.json()).then(setPantry);
 
   const addPantryItem = async () => {
     if (!newItem.trim()) return;

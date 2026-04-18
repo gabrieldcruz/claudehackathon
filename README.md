@@ -2,6 +2,17 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+Create a local `.env` file in the project root:
+
+```bash
+DATABASE_URL="file:./prisma/dev.db"
+GOOGLE_MAPS_API_KEY="your-google-maps-platform-api-key"
+```
+
+The nearby restaurant search uses the Google Places API through
+`/api/restaurants/nearby`, so the key must stay in `.env` and should not be
+prefixed with `NEXT_PUBLIC_`.
+
 First, run the development server:
 
 ```bash
